@@ -4,9 +4,9 @@ import sqlite3
 import urllib.parse
 from datetime import datetime
 
-PORT = 8080
 import os
 
+PORT = int(os.environ.get('PORT', 8080))
 # Pobranie ścieżki do folderu, w którym znajduje się app.py
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_FILE = os.path.join(BASE_DIR, "market_data.db")
