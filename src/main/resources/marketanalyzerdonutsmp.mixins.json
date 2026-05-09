@@ -1,0 +1,14 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "org.example.marketanalyzer.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "SilentScanMixin"
+  ],
+  "client": [
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

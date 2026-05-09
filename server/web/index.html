@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Market Analyzer | Premium Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        dark: '#05080F',
+                        panel: 'rgba(15, 23, 42, 0.65)',
+                        accent: '#3A78FF',
+                        success: '#10B981',
+                        danger: '#EF4444',
+                    },
+                    fontFamily: {
+                        sans: ['Plus Jakarta Sans', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { 
+            background: radial-gradient(circle at top right, #1e293b, #05080f);
+            color: #e2e8f0;
+            overflow: hidden;
+            height: 100vh;
+        }
+        
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(12px) saturate(180%);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+
+        .item-row { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); cursor: pointer; border-left: 0px solid transparent; }
+        .item-row:hover { background: rgba(58, 120, 255, 0.1); border-left-width: 4px; border-left-color: #3A78FF; padding-left: 1rem; }
+        .active-item { background: rgba(58, 120, 255, 0.2); border-left-width: 4px; border-left-color: #00D4FF; }
+
+        .animate-pulse-slow { animation: pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+
+        .stat-card { transition: transform 0.3s ease; }
+        .stat-card:hover { transform: translateY(-2px); }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(58, 120, 255, 0.3); border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(58, 120, 255, 0.5); }
+
+        .snipe-card { border: 1px solid rgba(16, 185, 129, 0.2); animation: slideIn 0.4s ease-out; }
+        @keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body class="flex flex-col">
+    
+    <!-- Top Navigation -->
+    <nav class="glass-panel m-4 p-4 flex justify-between items-center z-50">
+        <div class="flex items-center gap-4">
+            <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-400 flex items-center justify-center shadow-lg shadow-blue-500/20">
+                <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
+            </div>
+            <div>
+                <h1 class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400">Market Analyzer</h1>
+                <div class="flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-success animate-pulse"></span>
+                    <span class="text-xs text-success/80 font-medium tracking-wider uppercase">Live Network</span>
+                    <span id="sync-indicator" class="hidden text-[10px] text-accent animate-bounce ml-2">Syncing...</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-6">
+            <div class="hidden md:flex items-center gap-4 text-xs font-bold uppercase tracking-widest text-gray-500">
+                <div class="flex flex-col items-end">
+                    <span>Total Records</span>
+                    <span id="total-records" class="text-white text-sm">0</span>
+                </div>
+                <div class="w-px h-8 bg-white/10"></div>
+                <div class="flex flex-col items-end">
+                    <span>Active Items</span>
+                    <span id="active-items" class="text-white text-sm">0</span>
+                </div>
+            </div>
+            <div class="flex bg-dark/50 p-1 rounded-xl border border-white/5 mr-4">
+                <button onclick="setTab('market')" id="tab-market" class="px-4 py-2 rounded-lg text-sm font-medium transition-all bg-accent text-white shadow-lg shadow-blue-500/20">Analytics</button>
+                <button onclick="setTab('snipes')" id="tab-snipes" class="px-4 py-2 rounded-lg text-sm font-medium transition-all text-gray-400 hover:text-white">Snipe History</button>
+            </div>
+            <button onclick="showHelp()" class="p-2 rounded-lg hover:bg-white/5 transition-colors text-gray-400" title="Help">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.444 1.103m0 0a1.003 1.003 0 112.006 0 1.003 1.003 0 01-2.006 0zM12 18h.01"></path></svg>
+            </button>
+            <button onclick="fetchData()" class="px-6 py-2 rounded-xl bg-accent hover:bg-blue-500 text-white text-sm font-bold transition-all transform active:scale-95 shadow-lg shadow-blue-500/20">
+                Refresh
+            </button>
+        </div>
+    </nav>
+
+    <!-- Main Container -->
+    <main class="flex-1 flex overflow-hidden px-4 pb-4 gap-4">
+        
+        <!-- Sidebar -->
+        <aside class="w-80 flex flex-col gap-4">
+            <div class="glass-panel p-5 flex flex-col h-full">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-sm font-bold text-gray-400 uppercase tracking-widest">Inventory</h2>
+                    <div class="flex gap-2">
+                        <button onclick="toggleWatchlistMode()" id="watchlist-toggle" class="text-[10px] font-bold px-2 py-1 rounded bg-white/5 text-gray-500 hover:text-white transition-all">ALL</button>
+                        <span id="item-count" class="text-xs font-bold bg-accent/20 text-accent px-2 py-1 rounded-md">0</span>
+                    </div>
+                </div>
+                <div class="relative mb-6">
+                    <input type="text" id="search-input" placeholder="Search items..." 
+                           class="w-full bg-dark/40 border border-white/5 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 transition-all">
+                </div>
+                <div id="item-list" class="flex-1 overflow-y-auto pr-2 -mr-2 space-y-2">
+                    <!-- Items injected here -->
+                </div>
+            </div>
+        </aside>
+
+        <!-- Dynamic Content Section -->
+        <div class="flex-1 flex flex-col gap-4 overflow-y-auto" id="main-scroll">
+            
+            <!-- Market Tab -->
+            <div id="content-market" class="flex flex-col gap-4 h-full">
+                <!-- Stats Row -->
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div class="glass-panel p-5 stat-card">
+                        <p class="text-xs font-bold text-gray-500 uppercase tracking-wider">Unit Price</p>
+                        <div class="flex items-end gap-2 mt-2">
+                            <p id="stat-price" class="text-2xl font-bold text-white leading-none">---</p>
+                            <span id="stat-trend" class="text-xs font-bold pb-1"></span>
+                        </div>
+                    </div>
+                    <div class="glass-panel p-5 stat-card border-l-4 border-l-accent bg-accent/5">
+                        <p class="text-xs font-bold text-blue-400 uppercase tracking-wider">Stack (64x)</p>
+                        <p id="stat-stack" class="text-2xl font-bold text-white mt-2 leading-none">---</p>
+                    </div>
+                    <div class="glass-panel p-5 stat-card">
+                        <p class="text-xs font-bold text-gray-500 uppercase tracking-wider">Average (7d)</p>
+                        <p id="stat-avg" class="text-2xl font-bold text-yellow-400 mt-2 leading-none">---</p>
+                    </div>
+                    <div class="glass-panel p-5 stat-card">
+                        <p class="text-xs font-bold text-gray-500 uppercase tracking-wider">Market Depth</p>
+                        <p id="stat-vol" class="text-2xl font-bold text-cyan-400 mt-2 leading-none">---</p>
+                    </div>
+                </div>
+
+                <!-- Main Chart -->
+                <div class="glass-panel p-6 flex-[2] flex flex-col min-h-[450px]">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 id="chart-title" class="text-xl font-bold text-white">Market Dynamics</h2>
+                        <div class="flex gap-2 text-xs font-medium text-gray-500">
+                            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-cyan-400"></span> Current Price</span>
+                            <span id="last-updated-label" class="flex items-center gap-1 ml-4 italic text-gray-400"></span>
+                        </div>
+                    </div>
+                    <div class="flex-1 relative w-full h-full">
+                        <canvas id="marketChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Advice Panel -->
+                <div class="glass-panel p-5 mb-4 shrink-0">
+                    <div class="flex items-center gap-3 mb-4">
+                        <div class="w-8 h-8 rounded-lg bg-yellow-500/20 flex items-center justify-center text-yellow-500">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        </div>
+                        <h3 class="font-bold text-white">Profit Opportunities</h3>
+                    </div>
+                    <div id="advice-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <p class="text-gray-500 text-sm">Scan more items to see profit advice...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Snipes Tab -->
+            <div id="content-snipes" class="hidden flex flex-col gap-4">
+                <div class="glass-panel p-6">
+                    <div class="flex justify-between items-center mb-6">
+                        <div>
+                            <h2 class="text-xl font-bold text-white">Snipe History</h2>
+                            <p class="text-sm text-gray-400">Last 50 automated market opportunities detected</p>
+                        </div>
+                        <div class="px-4 py-2 bg-success/10 text-success rounded-xl border border-success/20 text-xs font-bold uppercase tracking-widest">
+                            Total Saved: <span id="total-saved">$0</span>
+                        </div>
+                    </div>
+                    <div id="snipes-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <!-- Snipes cards injected here -->
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Help Modal -->
+    <div id="help-modal" class="fixed inset-0 bg-dark/80 backdrop-blur-md z-[100] hidden flex items-center justify-center p-4">
+        <div class="glass-panel max-w-lg w-full p-8 relative">
+            <button onclick="hideHelp()" class="absolute top-4 right-4 text-gray-500 hover:text-white">✕</button>
+            <h2 class="text-2xl font-bold text-white mb-6">Market Analyzer Guide</h2>
+            <div class="space-y-4">
+                <div class="flex gap-4">
+                    <div class="w-10 h-10 rounded-full bg-accent/20 flex items-center justify-center text-accent shrink-0">1</div>
+                    <div>
+                        <h4 class="font-bold text-white">Scanning</h4>
+                        <p class="text-sm text-gray-400">Add items to your Watch List in game and click Scan. This dashboard updates every 30 seconds automatically.</p>
+                    </div>
+                </div>
+                <div class="flex gap-4">
+                    <div class="w-10 h-10 rounded-full bg-success/20 flex items-center justify-center text-success shrink-0">2</div>
+                    <div>
+                        <h4 class="font-bold text-white">Snipe History</h4>
+                        <p class="text-sm text-gray-400">Check the 'Snipe History' tab to see past deals. If you were AFK, you can see what opportunities you missed!</p>
+                    </div>
+                </div>
+                <div class="flex gap-4">
+                    <div class="w-10 h-10 rounded-full bg-yellow-500/20 flex items-center justify-center text-yellow-500 shrink-0">3</div>
+                    <div>
+                        <h4 class="font-bold text-white">Price Trends</h4>
+                        <p class="text-sm text-gray-400">The line turns green when the price is significantly below average. Red indicates a price spike.</p>
+                    </div>
+                </div>
+            </div>
+            <button onclick="hideHelp()" class="w-full mt-8 py-3 bg-accent rounded-xl text-white font-bold hover:bg-blue-500 transition-all">Got it!</button>
+        </div>
+    </div>
+
+    <script>
+        let globalData = {};
+        let snipeData = [];
+        let currentChart = null;
+        let activeTab = 'market';
+        let watchlistMode = localStorage.getItem('watchlistMode') === 'true';
+        let myWatchlist = JSON.parse(localStorage.getItem('myWatchlist') || '[]');
+
+        const ctx = document.getElementById('marketChart').getContext('2d');
+        Chart.defaults.color = '#94a3b8';
+        Chart.defaults.font.family = 'Plus Jakarta Sans';
+
+        function initChart() {
+            if (currentChart) currentChart.destroy();
+            currentChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Price',
+                        data: [],
+                        borderColor: '#00D4FF',
+                        backgroundColor: 'rgba(0, 212, 255, 0.05)',
+                        borderWidth: 3,
+                        pointBackgroundColor: '#05080F',
+                        pointBorderColor: '#00D4FF',
+                        pointBorderWidth: 2,
+                        pointRadius: 4,
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                            padding: 12,
+                            borderColor: 'rgba(255,255,255,0.1)',
+                            borderWidth: 1,
+                            callbacks: {
+                                label: (c) => ` Price: $${c.parsed.y.toLocaleString()}`
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { maxTicksLimit: 10 } },
+                        y: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { callback: v => '$' + v.toLocaleString() } }
+                    }
+                }
+            });
+        }
+
+        initChart();
+
+        async function fetchData() {
+            try {
+                document.getElementById('sync-indicator').classList.remove('hidden');
+                const [resData, resSnipes] = await Promise.all([
+                    fetch('/api/market-data'),
+                    fetch('/api/snipes')
+                ]);
+                
+                globalData = await resData.json();
+                snipeData = await resSnipes.json();
+                
+                renderItemList();
+                renderSnipes();
+                updateAdvice();
+                updateGlobalStats();
+                
+                // Update toggle state UI
+                const btn = document.getElementById('watchlist-toggle');
+                if (btn) {
+                    btn.innerText = watchlistMode ? 'WATCHED' : 'ALL';
+                    btn.classList.toggle('bg-accent', watchlistMode);
+                    btn.classList.toggle('text-white', watchlistMode);
+                }
+
+                if (selectedItem) selectItem(selectedItem);
+                else {
+                    const keys = Object.keys(globalData);
+                    if (keys.length > 0) selectItem(keys[0]);
+                }
+                setTimeout(() => document.getElementById('sync-indicator').classList.add('hidden'), 1000);
+            } catch (err) { 
+                console.error(err); 
+                document.getElementById('sync-indicator').innerText = 'Sync Error';
+                document.getElementById('sync-indicator').classList.remove('hidden');
+                document.getElementById('sync-indicator').classList.replace('text-accent', 'text-danger');
+            }
+        }
+
+        function updateGlobalStats() {
+            const items = Object.keys(globalData);
+            let total = 0;
+            items.forEach(k => total += globalData[k].history.length);
+            document.getElementById('total-records').innerText = total.toLocaleString();
+            document.getElementById('active-items').innerText = items.length;
+        }
+
+        function getFriendlyName(id) {
+            if (!id || !id.includes(':')) return id;
+            let name = id.split(':')[1].replace(/_/g, ' ');
+            return name.charAt(0).toUpperCase() + name.slice(1);
+        }
+
+        function renderItemList() {
+            const list = document.getElementById('item-list');
+            const search = document.getElementById('search-input').value.toLowerCase();
+            
+            // AGGRESSIVE DEDUPLICATION: Group by Friendly Name
+            const groupedData = {};
+            Object.keys(globalData).forEach(id => {
+                const friendly = getFriendlyName(id);
+                if (!groupedData[friendly]) {
+                    groupedData[friendly] = {
+                        id: id, // Keep one ID for reference
+                        friendly: friendly,
+                        history: [...globalData[id].history],
+                        allIds: [id]
+                    };
+                } else {
+                    groupedData[friendly].history = [...groupedData[friendly].history, ...globalData[id].history]
+                        .sort((a,b) => a.timestamp - b.timestamp);
+                    groupedData[friendly].allIds.push(id);
+                }
+            });
+
+            const items = Object.values(groupedData).sort((a,b) => a.friendly.localeCompare(b.friendly));
+            
+            let html = '';
+            let count = 0;
+            items.forEach(item => {
+                // Check if any of the IDs for this group are in the watchlist
+                const isWatched = item.allIds.some(id => myWatchlist.includes(id));
+                
+                if (watchlistMode && !isWatched) return;
+
+                if (item.friendly.toLowerCase().includes(search) || item.id.toLowerCase().includes(search)) {
+                    count++;
+                    const hist = item.history;
+                    if (hist.length === 0) return;
+                    const last = hist[hist.length-1].price;
+                    const prev = hist.length > 1 ? hist[hist.length-2].price : last;
+                    const isActive = item.allIds.includes(selectedItem) ? 'active-item' : '';
+                    
+                    const trend = last > prev ? 'text-danger' : last < prev ? 'text-success' : 'text-gray-500';
+                    const icon = last > prev ? '↑' : last < prev ? '↓' : '•';
+                    const star = isWatched ? '★' : '☆';
+                    
+                    html += `
+                        <div class="item-row p-3 rounded-xl flex justify-between items-center ${isActive}" onclick="selectItem('${item.id.replace(/'/g, "\\'")}')">
+                            <div class="flex gap-3 items-center">
+                                <button onclick="toggleWatch('${item.id.replace(/'/g, "\\'")}', event)" class="text-lg ${isWatched ? 'text-yellow-400' : 'text-gray-600'} hover:scale-125 transition-transform">${star}</button>
+                                <div class="flex flex-col">
+                                    <span class="font-bold text-gray-200 truncate pr-2 text-sm">${item.friendly}</span>
+                                    <span class="text-[10px] text-gray-500 uppercase tracking-tighter">${item.id}</span>
+                                </div>
+                            </div>
+                            <div class="flex flex-col items-end">
+                                <span class="text-sm font-bold text-white">$${last.toLocaleString()}</span>
+                                <span class="text-[10px] font-bold ${trend}">${icon} ${Math.abs(((last-prev)/prev)*100).toFixed(1)}%</span>
+                            </div>
+                        </div>
+                    `;
+                }
+            });
+            list.innerHTML = html || '<p class="text-gray-500 text-center py-4 text-xs">' + (watchlistMode ? 'No watched items. Star some items first!' : 'No assets found') + '</p>';
+            document.getElementById('item-count').innerText = count;
+        }
+
+        function renderSnipes() {
+            const list = document.getElementById('snipes-list');
+            let html = '';
+            let totalSaved = 0;
+            
+            snipeData.forEach(s => {
+                const saved = (s.avg_price - s.price);
+                totalSaved += saved;
+                const d = new Date(s.timestamp);
+                const time = `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
+                
+                html += `
+                    <div class="glass-panel p-4 snipe-card relative overflow-hidden">
+                        <div class="absolute -right-4 -top-4 w-16 h-16 bg-success/10 rounded-full blur-xl"></div>
+                        <div class="flex justify-between items-start mb-2">
+                            <span class="font-bold text-white">${getFriendlyName(s.item_name)}</span>
+                            <span class="text-xs text-gray-500">${time}</span>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2 mt-3">
+                            <div>
+                                <p class="text-[10px] text-gray-500 uppercase">Bought for</p>
+                                <p class="text-sm font-bold text-success">$${s.price.toLocaleString()}</p>
+                            </div>
+                            <div>
+                                <p class="text-[10px] text-gray-500 uppercase">Est. Value</p>
+                                <p class="text-sm font-bold text-white">$${s.avg_price.toLocaleString()}</p>
+                            </div>
+                        </div>
+                        <div class="mt-3 pt-3 border-t border-white/5 flex justify-between items-center">
+                            <span class="text-[10px] font-bold text-success uppercase">Potential Profit</span>
+                            <span class="text-xs font-bold text-success">+$${saved.toLocaleString()}</span>
+                        </div>
+                    </div>
+                `;
+            });
+            list.innerHTML = html || '<p class="col-span-full text-center text-gray-500 py-12">No snipes recorded yet...</p>';
+            document.getElementById('total-saved').innerText = '$' + Math.round(totalSaved).toLocaleString();
+        }
+
+        function updateAdvice() {
+            const list = document.getElementById('advice-list');
+            let opportunities = [];
+            
+            Object.keys(globalData).forEach(name => {
+                // ONLY show advice for items in your watchlist
+                if (!myWatchlist.includes(name)) return;
+
+                const hist = globalData[name].history;
+                if (hist.length < 3) return;
+                
+                const last = hist[hist.length-1].price;
+                let sum = 0; hist.forEach(p => sum += p.price);
+                const avg = sum / hist.length;
+                
+                if (last < avg * 0.95 && last > 0) { // 5% below average
+                    opportunities.push({
+                        name,
+                        friendly: getFriendlyName(name),
+                        discount: ((avg - last) / avg) * 100,
+                        price: last
+                    });
+                }
+            });
+            
+            opportunities.sort((a,b) => b.discount - a.discount);
+            
+            if (opportunities.length === 0) {
+                list.innerHTML = '<p class="col-span-full text-gray-500 text-sm italic">Waiting for more data to generate advice...</p>';
+                return;
+            }
+            
+            list.innerHTML = opportunities.slice(0, 3).map(o => `
+                <div class="p-3 bg-white/5 rounded-xl border border-white/5">
+                    <p class="text-xs text-gray-400">${o.friendly}</p>
+                    <p class="text-sm font-bold text-white mt-1">Below Avg: <span class="text-success">-${o.discount.toFixed(0)}%</span></p>
+                    <button onclick="selectItem('${o.name}')" class="text-[10px] text-accent font-bold uppercase mt-2 hover:underline">View Chart</button>
+                </div>
+            `).join('');
+        }
+
+        function selectItem(name) {
+            selectedItem = name;
+            renderItemList();
+            const item = globalData[name];
+            if (!item) return;
+            
+            document.getElementById('chart-title').innerText = getFriendlyName(name);
+            const history = item.history;
+            if (history.length === 0) return;
+
+            const labels = history.map(p => {
+                const d = new Date(p.timestamp);
+                return `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
+            });
+            const prices = history.map(p => p.price);
+            
+            // Dynamic color based on trend
+            const first = prices[0];
+            const last = prices[prices.length-1];
+            const color = last < first ? '#10B981' : '#3A78FF'; // Green if cheaper than start of chart
+            
+            currentChart.data.labels = labels;
+            currentChart.data.datasets[0].data = prices;
+            currentChart.data.datasets[0].borderColor = color;
+            currentChart.data.datasets[0].backgroundColor = color + '10';
+            currentChart.update();
+
+            // Stats
+            document.getElementById('stat-price').innerText = '$' + last.toLocaleString();
+            document.getElementById('stat-stack').innerText = '$' + (last * 64).toLocaleString();
+            document.getElementById('stat-vol').innerText = last.toLocaleString();
+            
+            let sum = 0; history.forEach(p => sum += p.price);
+            const avg = sum / history.length;
+            document.getElementById('stat-avg').innerText = '$' + Math.round(avg).toLocaleString();
+            
+            const trendEl = document.getElementById('stat-trend');
+            const diff = ((last - avg) / avg) * 100;
+            trendEl.innerText = (diff >= 0 ? '+' : '') + diff.toFixed(1) + '%';
+            trendEl.className = `text-xs font-bold pb-1 ${diff < 0 ? 'text-success' : 'text-danger'}`;
+
+            // Last Updated
+            const lastTs = history[history.length-1].timestamp;
+            const lastDate = new Date(lastTs);
+            const timeStr = `${lastDate.getHours().toString().padStart(2,'0')}:${lastDate.getMinutes().toString().padStart(2,'0')}:${lastDate.getSeconds().toString().padStart(2,'0')}`;
+            document.getElementById('last-updated-label').innerText = `• Last scan: ${timeStr}`;
+        }
+
+        function setTab(tab) {
+            activeTab = tab;
+            document.getElementById('content-market').classList.toggle('hidden', tab !== 'market');
+            document.getElementById('content-snipes').classList.toggle('hidden', tab !== 'snipes');
+            
+            document.getElementById('tab-market').className = tab === 'market' ? 'px-4 py-2 rounded-lg text-sm font-medium transition-all bg-accent text-white shadow-lg shadow-blue-500/20' : 'px-4 py-2 rounded-lg text-sm font-medium transition-all text-gray-400 hover:text-white';
+            document.getElementById('tab-snipes').className = tab === 'snipes' ? 'px-4 py-2 rounded-lg text-sm font-medium transition-all bg-accent text-white shadow-lg shadow-blue-500/20' : 'px-4 py-2 rounded-lg text-sm font-medium transition-all text-gray-400 hover:text-white';
+        }
+
+        function toggleWatch(name, e) {
+            if (e) e.stopPropagation();
+            if (myWatchlist.includes(name)) {
+                myWatchlist = myWatchlist.filter(n => n !== name);
+            } else {
+                myWatchlist.push(name);
+            }
+            localStorage.setItem('myWatchlist', JSON.stringify(myWatchlist));
+            renderItemList();
+        }
+
+        function toggleWatchlistMode() {
+            watchlistMode = !watchlistMode;
+            localStorage.setItem('watchlistMode', watchlistMode);
+            const btn = document.getElementById('watchlist-toggle');
+            btn.innerText = watchlistMode ? 'WATCHED' : 'ALL';
+            btn.classList.toggle('bg-accent', watchlistMode);
+            btn.classList.toggle('text-white', watchlistMode);
+            renderItemList();
+        }
+
+        function showHelp() { document.getElementById('help-modal').classList.remove('hidden'); }
+        function hideHelp() { document.getElementById('help-modal').classList.add('hidden'); }
+
+        document.getElementById('search-input').addEventListener('input', renderItemList);
+        setInterval(fetchData, 15000); // More frequent updates for premium feel
+        fetchData();
+    </script>
+</body>
+</html>
