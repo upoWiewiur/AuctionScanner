@@ -343,30 +343,33 @@
         }
 
         function getFriendlyName(id) {
-            if (!id || !id.includes(':')) return id;
-            let name = id.split(':')[1].replace(/_/g, ' ');
-            return name.charAt(0).toUpperCase() + name.slice(1);
+            if (!id) return 'Unknown';
+            const cleanId = id.toLowerCase();
+            if (!cleanId.includes(':')) return cleanId.charAt(0).toUpperCase() + cleanId.slice(1);
+            let name = cleanId.split(':')[1].replace(/_/g, ' ');
+            return name.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
         }
 
         function renderItemList() {
             const list = document.getElementById('item-list');
             const search = document.getElementById('search-input').value.toLowerCase();
             
-            // AGGRESSIVE DEDUPLICATION: Group by Friendly Name
+            // AGGRESSIVE DEDUPLICATION: Group by Normalized Friendly Name
             const groupedData = {};
             Object.keys(globalData).forEach(id => {
                 const friendly = getFriendlyName(id);
-                if (!groupedData[friendly]) {
-                    groupedData[friendly] = {
-                        id: id, // Keep one ID for reference
+                const key = friendly.toLowerCase(); // Use lowercase key for grouping
+                if (!groupedData[key]) {
+                    groupedData[key] = {
+                        id: id, 
                         friendly: friendly,
                         history: [...globalData[id].history],
                         allIds: [id]
                     };
                 } else {
-                    groupedData[friendly].history = [...groupedData[friendly].history, ...globalData[id].history]
+                    groupedData[key].history = [...groupedData[key].history, ...globalData[id].history]
                         .sort((a,b) => a.timestamp - b.timestamp);
-                    groupedData[friendly].allIds.push(id);
+                    groupedData[key].allIds.push(id);
                 }
             });
 
