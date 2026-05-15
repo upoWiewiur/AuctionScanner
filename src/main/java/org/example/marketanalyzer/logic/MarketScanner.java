@@ -30,7 +30,7 @@ public class MarketScanner {
     private static HandledScreen<?> capturedScreen = null;
     private static int tickCounter = 0;
     private static String currentItem = null;
-    private static boolean didScan = false;  // true after doScan, waiting to close screen
+    // didScan no longer needed — screen closes in same tick as scan
 
     public static int lastPricesFound = 0;
     public static String lastScannedItem = "";
@@ -43,13 +43,10 @@ public class MarketScanner {
     // ── INIT ─────────────────────────────────────────────────
 
     public static void init() {
-        // Capture any HandledScreen that opens while we're waiting
+        // Capture any HandledScreen that opens while we're waiting (manual scan fallback)
         ScreenEvents.AFTER_INIT.register((client, screen, w, h) -> {
-            if (state == State.WAITING_SCREEN && screen instanceof HandledScreen<?> hs) {
-                capturedScreen = hs;
-                state = State.WAITING_SLOTS;
-                tickCounter = 0;
-                MarketAnalyzerMod.LOGGER.info("[Market] Screen opened for '" + currentItem + "'");
+            if (state == State.WAITING_SCREEN && screen instanceof HandledScreen<?> hs && !isAutoScan) {
+                captureScreen(hs);
             }
         });
 
@@ -75,22 +72,19 @@ public class MarketScanner {
                 }
 
                 case SCANNING -> {
-                    if (!didScan) {
-                        // Tick 1: perform the scan while the screen is still open
-                        if (capturedScreen != null && client.currentScreen == capturedScreen) {
-                            doScan(client, capturedScreen);
-                        } else {
-                            MarketAnalyzerMod.LOGGER.warn("[Market] Screen was closed before scan for '" + currentItem + "'");
-                        }
-                        didScan = true;  // next tick will close the screen
+                    if (capturedScreen != null) {
+                        doScan(client, capturedScreen);
+                        // CloseHandledScreenC2SPacket is sent in MinecraftClientMixin — no need to duplicate
                     } else {
-                        // Tick 2: close the AH screen and move on
-                        client.setScreen(null);
-                        capturedScreen = null;
-                        didScan = false;
-                        state = State.COOLDOWN;
-                        tickCounter = 0;
+                        MarketAnalyzerMod.LOGGER.warn("[Market] Screen was closed before scan for '" + currentItem + "'");
                     }
+                    // Safety: close client-side screen if somehow still open
+                    if (client.currentScreen != null && client.currentScreen == capturedScreen) {
+                        client.setScreen(null);
+                    }
+                    capturedScreen = null;
+                    state = State.COOLDOWN;
+                    tickCounter = 0;
                 }
 
                 case COOLDOWN -> {
@@ -104,6 +98,15 @@ public class MarketScanner {
     }
 
     // ── PUBLIC API ────────────────────────────────────────────
+    
+    public static void captureScreen(HandledScreen<?> hs) {
+        if (state == State.WAITING_SCREEN) {
+            capturedScreen = hs;
+            state = State.WAITING_SLOTS;
+            tickCounter = 0;
+            MarketAnalyzerMod.LOGGER.info("[Market] Screen " + (isAutoScan ? "SILENTLY " : "") + "captured for '" + currentItem + "'");
+        }
+    }
 
     /** Start scanning all tracked items (ręczne wywołanie). */
     public static void startFullScan() {
@@ -118,7 +121,6 @@ public class MarketScanner {
         isAutoScan = false;
         queue = new LinkedList<>(items);
         scanInProgress = true;
-        didScan = false;
         PriceParser.resetDebugLogCount();
         MarketAnalyzerMod.LOGGER.info("[Market] Starting full scan of " + items.size() + " items.");
         startNextItem(MinecraftClient.getInstance());
@@ -133,7 +135,6 @@ public class MarketScanner {
         isAutoScan = true;
         queue = new LinkedList<>(items);
         scanInProgress = true;
-        didScan = false;
         PriceParser.resetDebugLogCount();
         MarketAnalyzerMod.LOGGER.info("[Market] Auto-scan of " + items.size() + " items.");
         startNextItem(MinecraftClient.getInstance());
@@ -160,16 +161,19 @@ public class MarketScanner {
         if (queue.isEmpty()) {
             state = State.IDLE;
             scanInProgress = false;
-            isAutoScan = false; // Reset flag
-            MarketDataStore.save();
+            boolean wasAutoScan = isAutoScan;
+            isAutoScan = false;
+            MarketDataStore.save();           // save locally
+            MarketDataStore.pushToServerAsync(); // ALWAYS push: manual or auto
+            PricesJsonExporter.export();
             AutoScanScheduler.onScanComplete();
-            // Wyświetl wiadomość tylko przy ręcznym skanie
-            if (!isAutoScan && client.player != null) {
+            if (!wasAutoScan && client.player != null) {
                 client.player.sendMessage(
-                    Text.literal("§a[Market] §fSkanowanie zakończone! Sprawdź wykresy (§eM§f)."), false);
+                    Text.literal("§a[Market] §fSkan zakończony! Dane wysłane na serwer 🌐"), false);
             }
             return;
         }
+
 
         currentItem = queue.poll();
         lastScannedItem = currentItem;
@@ -263,6 +267,7 @@ public class MarketScanner {
                 java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
                         .uri(java.net.URI.create(TrackedItemsConfig.getApiUrl() + "/api/snipes"))
                         .header("Content-Type", "application/json")
+                        .header("X-API-Key", TrackedItemsConfig.getApiKey())
                         .POST(java.net.http.HttpRequest.BodyPublishers.ofString(json))
                         .build();
                 client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());

@@ -26,6 +26,9 @@ public class TrackedItemsConfig {
     public static class ConfigData {
         public List<String> trackedItems = new ArrayList<>();
         public String apiServerUrl = "https://auctionscanner.onrender.com";
+        public String apiKey = "";
+        /** AH tax percentage on DonutSMP (default: 5%) */
+        public double ahTaxPercent = 5.0;
     }
 
     public static List<String> getItems() {
@@ -40,6 +43,24 @@ public class TrackedItemsConfig {
 
     public static void setApiUrl(String url) {
         data.apiServerUrl = url;
+        save();
+    }
+
+    public static String getApiKey() {
+        return data.apiKey;
+    }
+
+    public static void setApiKey(String key) {
+        data.apiKey = key;
+        save();
+    }
+
+    public static double getAhTaxPercent() {
+        return data.ahTaxPercent;
+    }
+
+    public static void setAhTaxPercent(double percent) {
+        data.ahTaxPercent = Math.max(0.0, Math.min(50.0, percent));
         save();
     }
 

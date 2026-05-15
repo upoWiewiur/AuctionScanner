@@ -3,6 +3,7 @@ package org.example.marketanalyzer.gui;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
+import net.minecraft.client.gui.widget.TextFieldWidget;
 import net.minecraft.text.Text;
 import org.example.marketanalyzer.data.MarketDataStore;
 import org.example.marketanalyzer.data.MarketItem;
@@ -24,7 +25,8 @@ public class MarketAnalyzerScreen extends Screen {
     private static final int H = 290;
     private int px, py;
 
-    private int tab = 0; // 0 = Watch List, 1 = Chart
+    private int tab = 0; // 0 = Watch List, 1 = Chart, 2 = Deals, 3 = Config
+    private TextFieldWidget apiKeyField;
 
     // Watch list
     private String newItemInput = "";
@@ -33,6 +35,20 @@ public class MarketAnalyzerScreen extends Screen {
 
     // Chart
     private String selectedItem = null;
+    private boolean pullTriggered = false; // avoid spamming server pulls
+
+    /** Called when chart tab is visible — fetches server data if local history is missing */
+    private void ensureChartDataLoaded() {
+        if (pullTriggered) return;
+        if (selectedItem == null) return;
+        org.example.marketanalyzer.data.MarketItem localItem =
+            org.example.marketanalyzer.data.MarketDataStore.getItem(selectedItem);
+        if (localItem == null || localItem.getHistory().isEmpty()) {
+            pullTriggered = true;
+            // Fetch from server in background
+            org.example.marketanalyzer.data.MarketDataStore.pullFromServerAsync();
+        }
+    }
 
     // ── Autocomplete state ────────────────────────────────────
     private static final int MAX_SUGGESTIONS = 8;
@@ -134,6 +150,15 @@ public class MarketAnalyzerScreen extends Screen {
         addDrawableChild(ButtonWidget.builder(Text.literal("?"), b -> {
             showTutorial = !showTutorial;
         }).dimensions(px + W - 122, py + 6, 14, 14).build());
+
+        // API Key Field for Config Tab
+        apiKeyField = new TextFieldWidget(textRenderer, px + 144, py + 158, 240, 16, Text.literal("API Key"));
+        apiKeyField.setMaxLength(64);
+        apiKeyField.setText(TrackedItemsConfig.getApiKey());
+        apiKeyField.setRenderTextProvider((str, firstCharacterIndex) -> net.minecraft.text.OrderedText.styledForwardsVisitedString(str.replaceAll(".", "*"), net.minecraft.text.Style.EMPTY));
+        apiKeyField.setChangedListener(text -> TrackedItemsConfig.setApiKey(text));
+        apiKeyField.setVisible(tab == 3);
+        addDrawableChild(apiKeyField);
     }
 
     // ── RENDER ───────────────────────────────────────────────
@@ -158,9 +183,12 @@ public class MarketAnalyzerScreen extends Screen {
 
         // Content area
         if (tab == 0)      renderWatchList(ctx, mouseX, mouseY);
-        else if (tab == 1) renderChart(ctx, mouseX, mouseY);
+        else if (tab == 1) { renderChart(ctx, mouseX, mouseY); ensureChartDataLoaded(); }
         else if (tab == 2) renderDeals(ctx, mouseX, mouseY);
         else               renderSettings(ctx, mouseX, mouseY);
+
+        // Update API Key field visibility based on tab
+        if (apiKeyField != null) apiKeyField.setVisible(tab == 3 && !showTutorial);
 
         // Status bar
         renderStatusBar(ctx);
@@ -224,13 +252,25 @@ public class MarketAnalyzerScreen extends Screen {
 
     // ── TABS ─────────────────────────────────────────────────
     private void drawTabs(DrawContext ctx, int mx, int my) {
-        String[] labels = { "WATCH", "CHARTS", "DEALS", "CONFIG" };
+        // Count deals for badge
+        int dealCount = 0;
+        for (String name : TrackedItemsConfig.getItems()) {
+            MarketItem item = MarketDataStore.getItem(name);
+            if (item == null || item.getHistory().isEmpty()) continue;
+            double last = item.getHistory().get(item.getHistory().size()-1).getPrice();
+            double avg = item.getAverageRecentPrice(7L * 24 * 3600000);
+            if (last > 0 && last < avg * 0.9) dealCount++;
+        }
+        
+        String[] labels = { "WATCH", "CHARTS", "DEALS" + (dealCount > 0 ? " §c●" : ""), "CONFIG" };
+        String[] rawLabels = { "WATCH", "CHARTS", "DEALS", "CONFIG" };
         int tx = px + 12, ty = py + 28;
         int h = 14, spacing = 6;
         int cur = tx;
 
         for (int i = 0; i < labels.length; i++) {
-            int tw = textRenderer.getWidth(labels[i]) + 16;
+            int tw = textRenderer.getWidth(rawLabels[i]) + 16;
+            if (dealCount > 0 && i == 2) tw += 10; // space for badge
             boolean sel = (tab == i);
             boolean hov = mx >= cur && mx < cur + tw && my >= ty && my < ty + h;
             
@@ -252,10 +292,9 @@ public class MarketAnalyzerScreen extends Screen {
     private void renderWatchList(DrawContext ctx, int mx, int my) {
         int x = px + 6, y = py + 48;
         int iw = W - 12; // input row width
+        int fieldW = iw - 100; // MUST match mouseClicked
 
         // ── Row 1: Input + buttons ──
-        // Input field
-        int fieldW = iw - 100;
         ctx.fill(x, y, x + fieldW, y + 18, 0x44000000);
         fillBorder(ctx, x, y, fieldW, 18, 1, inputFocused ? ACCENT : 0x22FFFFFF);
         String disp = newItemInput.isEmpty()
@@ -537,6 +576,11 @@ public class MarketAnalyzerScreen extends Screen {
             sy += 15;
         }
 
+        // API Key
+        ctx.drawTextWithShadow(textRenderer, Text.literal("§fAPI Secret Key"), sx, sy + 4, WHITE_COL);
+        // Field is rendered by the widget system automatically
+        sy += 24;
+
         // Export CSV
         int expW = 160, expX = px + W/2 - expW/2;
         boolean eH = mx >= expX && mx < expX + expW && my >= sy && my < sy + 18;
@@ -554,34 +598,62 @@ public class MarketAnalyzerScreen extends Screen {
         }
         if (max == min) { min -= 1; max += 1; }
         double range = max - min;
+        
+        // Avg line
+        double avg = pts.stream().mapToDouble(PricePoint::getPrice).average().orElse(0);
+        int avgY = gy + gh - (int) ((avg - min) * gh / range);
+        // Dashed average line
+        for (int dx = 0; dx < gw; dx += 6) {
+            ctx.fill(gx + dx, avgY, gx + Math.min(dx + 4, gw), avgY + 1, 0x88F59E0B);
+        }
+        ctx.drawTextWithShadow(textRenderer, Text.literal("§6avg"), gx + gw - 24, avgY - 8, 0xFFF59E0B);
+        
+        // Grid lines
         for (int i = 0; i <= 4; i++) {
             int ly = gy + gh - (i * gh / 4);
             ctx.fill(gx, ly, gx + gw, ly + 1, 0x11FFFFFF);
             double val = min + (i * range / 4);
-            ctx.drawTextWithShadow(textRenderer, Text.literal("$" + MarketScanner.fmt(val)), gx - 35, ly - 4, GRAY_COL);
+            ctx.drawTextWithShadow(textRenderer, Text.literal("$" + MarketScanner.fmt(val)), gx - 38, ly - 4, GRAY_COL);
         }
+        
+        // Gradient fill under curve (simplified)
         for (int i = 0; i < pts.size() - 1; i++) {
             int x1 = gx + (i * gw / (pts.size() - 1));
             int y1 = gy + gh - (int) ((pts.get(i).getPrice() - min) * gh / range);
             int x2 = gx + ((i + 1) * gw / (pts.size() - 1));
             int y2 = gy + gh - (int) ((pts.get(i + 1).getPrice() - min) * gh / range);
+            // Line
             ctx.fill(x1, Math.min(y1, y2), x2, Math.max(y1, y2) + 1, CYAN_COL);
+            // Light fill under
+            ctx.fill(x1, Math.min(y1, y2), x2, gy + gh, 0x11009EFF);
         }
+        
+        // Hover tooltip
         for (int i = 0; i < pts.size(); i++) {
             int hx = gx + (i * gw / (pts.size() - 1));
             int hy = gy + gh - (int) ((pts.get(i).getPrice() - min) * gh / range);
-            if (mx >= hx - 2 && mx <= hx + 2 && my >= gy && my <= gy + gh) {
+            if (mx >= hx - 3 && mx <= hx + 3 && my >= gy && my <= gy + gh) {
+                // Vertical crosshair line
                 ctx.fill(hx, gy, hx + 1, gy + gh, 0x44FFFFFF);
+                // Dot on line
+                ctx.fill(hx - 3, hy - 3, hx + 4, hy + 4, 0xFF05080F);
+                ctx.fill(hx - 2, hy - 2, hx + 3, hy + 3, CYAN_COL);
+                // Tooltip
                 PricePoint p = pts.get(i);
-                String priceLine = "Price: $" + String.format("%.2f", p.getPrice());
+                String priceLine = "$" + String.format("%.2f", p.getPrice());
                 String dateLine = new java.text.SimpleDateFormat("MM-dd HH:mm").format(new java.util.Date(p.getTimestamp()));
-                int tipW = Math.max(textRenderer.getWidth(priceLine), textRenderer.getWidth(dateLine)) + 12;
-                int tipX = hx + 8, tipY = hy - 20;
-                if (tipX + tipW > gx + gw) tipX = hx - tipW - 8;
-                ctx.fill(tipX, tipY, tipX + tipW, tipY + 30, 0xFF05080F);
-                fillBorder(ctx, tipX, tipY, tipW, 30, 1, ACCENT);
-                ctx.drawTextWithShadow(textRenderer, Text.literal(priceLine), tipX + 6, tipY + 4, WHITE_COL);
-                ctx.drawTextWithShadow(textRenderer, Text.literal("§8" + dateLine), tipX + 6, tipY + 15, GRAY_COL);
+                double change = avg > 0 ? ((p.getPrice() - avg) / avg * 100) : 0;
+                String changeLine = (change >= 0 ? "§a+" : "§c") + String.format("%.1f%%", change);
+                int tipW = Math.max(textRenderer.getWidth(priceLine), textRenderer.getWidth(dateLine)) + 16;
+                int tipX = hx + 10, tipY = hy - 36;
+                if (tipX + tipW > gx + gw) tipX = hx - tipW - 10;
+                if (tipY < gy) tipY = hy + 6;
+                // Tooltip box
+                ctx.fill(tipX - 1, tipY - 1, tipX + tipW + 1, tipY + 39, BORDER);
+                ctx.fill(tipX, tipY, tipX + tipW, tipY + 38, 0xFF05080F);
+                ctx.drawTextWithShadow(textRenderer, Text.literal("§f" + priceLine), tipX + 6, tipY + 5, WHITE_COL);
+                ctx.drawTextWithShadow(textRenderer, Text.literal(changeLine), tipX + 6, tipY + 16, WHITE_COL);
+                ctx.drawTextWithShadow(textRenderer, Text.literal("§8" + dateLine), tipX + 6, tipY + 27, GRAY_COL);
             }
         }
     }
@@ -620,7 +692,8 @@ public class MarketAnalyzerScreen extends Screen {
                     int sy = dropY + 1 + si * 13;
                     if (mx >= x && mx < x + fieldW && my >= sy && my < sy + 13) {
                         String entry = suggestions.get(suggestionScroll + si);
-                        newItemInput = entry.split("\\|")[1];
+                        // Use friendly name (part before |) instead of full technical ID
+                        newItemInput = entry.split("\\|")[0];
                         suggestions.clear(); hoveredSuggestion = -1; return true;
                     }
                 }
@@ -661,9 +734,9 @@ public class MarketAnalyzerScreen extends Screen {
             }
         } else if (tab == 3) {
             int sx = px + 14, sy = py + 54;
-            // Toggle Auto-Scan
+            // Toggle Auto-Scan — fixed Y offset to match renderSettings
             int togX = sx + 130, togW = 70;
-            if (mx >= togX && mx < togX + togW && my >= sy + 18 && my < sy + 18 + 16) {
+            if (mx >= togX && mx < togX + togW && my >= sy + 18 && my < sy + 34) {
                 AutoScanScheduler.setEnabled(!AutoScanScheduler.isEnabled()); return true;
             }
             // Scan Interval

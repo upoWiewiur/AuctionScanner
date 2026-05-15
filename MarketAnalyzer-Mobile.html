@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="pl" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Market Analyzer</title>
+<meta name="theme-color" content="#050d1a">
+<link rel="manifest" href="data:application/json,{&quot;name&quot;:&quot;Market Analyzer&quot;,&quot;short_name&quot;:&quot;Market&quot;,&quot;start_url&quot;:&quot;/&quot;,&quot;display&quot;:&quot;standalone&quot;,&quot;background_color&quot;:&quot;%23050d1a&quot;,&quot;theme_color&quot;:&quot;%23050d1a&quot;}">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#050d1a;color:#e2e8f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;min-height:100vh;display:flex;flex-direction:column;padding-bottom:70px}
+  :root{--accent:#3a78ff;--glass:rgba(255,255,255,0.04);--border:rgba(255,255,255,0.08)}
+  
+  nav{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:rgba(5,13,26,0.95);backdrop-filter:blur(20px);position:sticky;top:0;z-index:50;border-bottom:1px solid var(--border)}
+  .logo{display:flex;align-items:center;gap:10px}
+  .logo-icon{width:32px;height:32px;background:linear-gradient(135deg,#1a3a8f,var(--accent));border-radius:8px;display:flex;align-items:center;justify-content:center}
+  .logo-icon svg{width:18px;height:18px}
+  .logo h1{font-size:16px;font-weight:700;letter-spacing:-0.3px}
+  .logo span{font-size:9px;color:var(--accent);font-weight:700;text-transform:uppercase;letter-spacing:1px;display:block}
+  .live-dot{width:7px;height:7px;background:#22c55e;border-radius:50%;box-shadow:0 0 8px #22c55e;animation:pulse 2s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+  
+  .btn{background:var(--accent);color:#fff;border:none;border-radius:10px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;transition:all 0.2s}
+  .btn:hover{filter:brightness(1.2)}
+  .btn-sm{padding:5px 10px;font-size:11px;border-radius:7px}
+  .btn-ghost{background:var(--glass);border:1px solid var(--border)}
+  
+  main{flex:1;padding:12px;display:flex;flex-direction:column;gap:12px}
+  
+  .card{background:var(--glass);border:1px solid var(--border);border-radius:16px;padding:14px;backdrop-filter:blur(12px)}
+  
+  .stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .stat{background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:12px;padding:12px}
+  .stat-label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#64748b;margin-bottom:4px}
+  .stat-value{font-size:20px;font-weight:800;letter-spacing:-0.5px;color:#f8fafc}
+  .stat-sub{font-size:10px;margin-top:2px}
+  .green{color:#22c55e}.red{color:#ef4444}.gray{color:#64748b}
+  
+  .search{width:100%;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:12px;padding:10px 14px;color:#fff;font-size:14px;outline:none;transition:border-color 0.2s}
+  .search:focus{border-color:var(--accent)}
+  
+  .item-list{display:flex;flex-direction:column;gap:6px;max-height:300px;overflow-y:auto}
+  .item-row{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:12px;cursor:pointer;transition:all 0.15s}
+  .item-row:hover,.item-row.active{background:rgba(58,120,255,0.12);border-color:rgba(58,120,255,0.3)}
+  .item-name{font-size:13px;font-weight:600;color:#f8fafc}
+  .item-id{font-size:9px;color:#475569;margin-top:1px}
+  .item-price{font-size:13px;font-weight:700;text-align:right}
+  .item-change{font-size:9px;text-align:right;margin-top:1px}
+  
+  .chart-container{position:relative;height:180px;width:100%}
+  canvas{width:100%!important}
+  
+  .snipe-row{padding:10px 12px;background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:12px;margin-bottom:6px}
+  .snipe-header{display:flex;justify-content:space-between;align-items:center}
+  .snipe-item{font-size:12px;font-weight:600}
+  .snipe-discount{font-size:11px;font-weight:700;color:#22c55e;background:rgba(34,197,94,0.1);padding:2px 7px;border-radius:6px}
+  .snipe-prices{display:flex;gap:12px;margin-top:5px}
+  .snipe-price-label{font-size:9px;color:#64748b;margin-bottom:1px}
+  .snipe-price-val{font-size:12px;font-weight:600}
+  
+  .section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#475569;margin-bottom:8px}
+  
+  .bottom-nav{position:fixed;bottom:0;left:0;right:0;background:rgba(5,13,26,0.98);backdrop-filter:blur(24px);border-top:1px solid var(--border);display:flex;justify-content:space-around;align-items:center;padding:10px 0;z-index:100}
+  .nav-btn{display:flex;flex-direction:column;align-items:center;gap:3px;background:none;border:none;color:#475569;cursor:pointer;padding:4px 20px;transition:color 0.2s;font-family:inherit}
+  .nav-btn.active{color:var(--accent)}
+  .nav-btn svg{width:22px;height:22px}
+  .nav-btn span{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+  .nav-refresh{background:rgba(58,120,255,0.15);border:1px solid rgba(58,120,255,0.25);border-radius:50%;width:46px;height:46px;display:flex;align-items:center;justify-content:center;margin-top:-22px;box-shadow:0 0 20px rgba(58,120,255,0.2)}
+  .nav-refresh svg{width:22px;height:22px;color:#fff}
+  
+  .tab-content{display:none}
+  .tab-content.active{display:flex;flex-direction:column;gap:12px}
+  
+  .empty{text-align:center;color:#475569;font-size:12px;padding:20px}
+  .spin{animation:spin 1s linear infinite}
+  @keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+  
+  ::-webkit-scrollbar{width:3px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:3px}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="logo">
+    <div class="logo-icon">
+      <svg fill="none" stroke="#fff" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+    </div>
+    <div>
+      <h1>Market Analyzer</h1>
+      <span>LIVE NETWORK</span>
+    </div>
+    <div class="live-dot" style="margin-left:8px"></div>
+  </div>
+  <div id="last-update" style="font-size:10px;color:#475569">---</div>
+</nav>
+
+<main>
+  <!-- Market Tab -->
+  <div id="tab-market" class="tab-content active">
+    <div class="stats-grid">
+      <div class="stat"><div class="stat-label">Cena jednostkowa</div><div class="stat-value" id="s-price">---</div><div class="stat-sub gray" id="s-price-sub">wybierz przedmiot</div></div>
+      <div class="stat"><div class="stat-label">Śred. 7 dni</div><div class="stat-value" id="s-avg">---</div><div class="stat-sub gray" id="s-avg-sub">brak danych</div></div>
+      <div class="stat"><div class="stat-label">Cena stosu (64)</div><div class="stat-value" id="s-stack">---</div><div class="stat-sub gray" id="s-rec">HOLD</div></div>
+      <div class="stat"><div class="stat-label">Okazje</div><div class="stat-value green" id="s-deals">0</div><div class="stat-sub gray">poniżej średniej</div></div>
+    </div>
+    
+    <div class="card" style="padding:12px">
+      <div class="chart-container"><canvas id="chart"></canvas></div>
+    </div>
+    
+    <div class="card">
+      <div class="section-title">Przedmioty</div>
+      <input class="search" type="text" placeholder="Szukaj..." id="search" oninput="renderItems()">
+      <div style="height:10px"></div>
+      <div class="item-list" id="item-list"></div>
+    </div>
+  </div>
+
+  <!-- Snipes Tab -->
+  <div id="tab-snipes" class="tab-content">
+    <div class="card">
+      <div class="section-title">Ostatnie okazje (snipes)</div>
+      <div id="snipe-list"><div class="empty">Ładowanie...</div></div>
+    </div>
+  </div>
+</main>
+
+<div class="bottom-nav">
+  <button class="nav-btn active" id="nav-market" onclick="setTab('market')">
+    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"/></svg>
+    <span>Rynek</span>
+  </button>
+  <button class="nav-btn nav-refresh" onclick="loadData(true)">
+    <svg id="refresh-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+  </button>
+  <button class="nav-btn" id="nav-snipes" onclick="setTab('snipes')">
+    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+    <span>Snipes</span>
+  </button>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script>
+const API = 'https://auctionscanner.onrender.com';
+let allData = {}, selectedItem = null, chartObj = null, snipes = [];
+
+function fmt(n){ if(!n&&n!==0) return '---'; if(n>=1e6) return (n/1e6).toFixed(2)+'M'; if(n>=1e3) return (n/1e3).toFixed(1)+'k'; return Math.round(n).toLocaleString('pl'); }
+function fmtTime(ts){ const d=new Date(ts); return d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0'); }
+function fmtDate(ts){ const d=new Date(ts); return d.getDate()+'.'+(d.getMonth()+1); }
+function friendly(id){ return id.replace('minecraft:','').replace(/_/g,' ').replace(/\b\w/g,l=>l.toUpperCase()); }
+
+async function loadData(manual=false){
+  const icon = document.getElementById('refresh-icon');
+  icon.classList.add('spin');
+  try{
+    const [mRes, sRes] = await Promise.all([
+      fetch(API+'/api/market-data').then(r=>r.json()),
+      fetch(API+'/api/snipes').then(r=>r.json())
+    ]);
+    allData = mRes; snipes = sRes;
+    document.getElementById('last-update').textContent = new Date().toLocaleTimeString('pl');
+    renderItems();
+    renderSnipes();
+    countDeals();
+    if(selectedItem && allData[selectedItem]) selectItem(selectedItem);
+  }catch(e){ document.getElementById('last-update').textContent = 'Błąd połączenia'; }
+  icon.classList.remove('spin');
+}
+
+function countDeals(){
+  let deals=0;
+  Object.values(allData).forEach(item=>{
+    if(!item.history||item.history.length<2) return;
+    const prices = item.history.map(p=>p.price);
+    const avg = prices.reduce((a,b)=>a+b,0)/prices.length;
+    const last = prices[prices.length-1];
+    if(last < avg*0.92) deals++;
+  });
+  document.getElementById('s-deals').textContent = deals;
+}
+
+function renderItems(){
+  const q = document.getElementById('search').value.toLowerCase();
+  const list = document.getElementById('item-list');
+  const items = Object.entries(allData)
+    .filter(([id])=>!q||friendly(id).toLowerCase().includes(q)||id.includes(q))
+    .filter(([id,v])=>v.history&&v.history.length>0)
+    .map(([id,v])=>{ const p=v.history; const last=p[p.length-1].price; const prev=p.length>1?p[0].price:last; const chg=((last-prev)/prev*100); return {id,last,chg}; })
+    .sort((a,b)=>b.last-a.last);
+  
+  list.innerHTML = items.length ? items.map(({id,last,chg})=>`
+    <div class="item-row${selectedItem===id?' active':''}" onclick="selectItem('${id}')">
+      <div><div class="item-name">${friendly(id)}</div><div class="item-id">${id}</div></div>
+      <div><div class="item-price">${fmt(last)}</div><div class="item-change ${chg>=0?'green':'red'}">${chg>=0?'+':''}${chg.toFixed(1)}%</div></div>
+    </div>`).join('') : '<div class="empty">Brak przedmiotów</div>';
+}
+
+function selectItem(id){
+  selectedItem = id;
+  document.querySelectorAll('.item-row').forEach(r=>r.classList.remove('active'));
+  document.querySelectorAll('.item-row').forEach(r=>{if(r.querySelector('.item-id')?.textContent===id)r.classList.add('active');});
+  
+  const item = allData[id];
+  if(!item||!item.history||!item.history.length) return;
+  const history = item.history.slice(-48);
+  const prices = history.map(p=>p.price);
+  const avg = prices.reduce((a,b)=>a+b,0)/prices.length;
+  const last = prices[prices.length-1];
+  const chg = prices.length>1?((last-prices[0])/prices[0]*100):0;
+  const ratio = last/avg;
+  const rec = ratio<=0.9?'BUY 🟢':ratio>=1.05?'SELL 🔴':'HOLD 🟡';
+  
+  document.getElementById('s-price').textContent = fmt(last);
+  document.getElementById('s-price-sub').textContent = `${chg>=0?'+':''}${chg.toFixed(1)}% zmiana`;
+  document.getElementById('s-price-sub').className = 'stat-sub '+(chg>=0?'green':'red');
+  document.getElementById('s-avg').textContent = fmt(avg);
+  document.getElementById('s-avg-sub').textContent = `${prices.length} próbek`;
+  document.getElementById('s-stack').textContent = fmt(last*64);
+  document.getElementById('s-rec').textContent = rec;
+  document.getElementById('s-rec').className = 'stat-sub';
+  
+  const labels = history.map(p=>fmtDate(p.timestamp));
+  const ctx = document.getElementById('chart').getContext('2d');
+  if(chartObj) chartObj.destroy();
+  
+  const isGood = last < avg*0.95;
+  const lineColor = isGood ? '#22c55e' : last > avg*1.05 ? '#ef4444' : '#3a78ff';
+  const gradId = ctx.createLinearGradient(0,0,0,180);
+  gradId.addColorStop(0, lineColor.replace(')',', 0.3)').replace('rgb','rgba')||lineColor+'4d');
+  gradId.addColorStop(1, 'transparent');
+  
+  chartObj = new Chart(ctx,{
+    type:'line',
+    data:{ labels, datasets:[{ data:prices, borderColor:lineColor, backgroundColor:gradId, borderWidth:2, pointRadius:0, tension:0.4, fill:true }]},
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}},
+      scales:{ x:{ticks:{color:'#475569',font:{size:9},maxTicksLimit:6}, grid:{color:'rgba(255,255,255,0.04)'}},
+               y:{ticks:{color:'#475569',font:{size:9},callback:v=>fmt(v)}, grid:{color:'rgba(255,255,255,0.04)'}}}}}
+  });
+}
+
+function renderSnipes(){
+  const el = document.getElementById('snipe-list');
+  if(!snipes.length){ el.innerHTML='<div class="empty">Brak snipe\'ów</div>'; return; }
+  el.innerHTML = snipes.slice(0,20).map(s=>{
+    const disc = ((s.avg_price-s.price)/s.avg_price*100).toFixed(1);
+    return `<div class="snipe-row">
+      <div class="snipe-header"><span class="snipe-item">${friendly(s.item_name)}</span><span class="snipe-discount">-${disc}%</span></div>
+      <div class="snipe-prices">
+        <div><div class="snipe-price-label">Cena</div><div class="snipe-price-val green">${fmt(s.price)}</div></div>
+        <div><div class="snipe-price-label">Śred.</div><div class="snipe-price-val gray">${fmt(s.avg_price)}</div></div>
+        <div><div class="snipe-price-label">Oszczędność</div><div class="snipe-price-val green">${fmt(s.avg_price-s.price)}</div></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function setTab(t){
+  ['market','snipes'].forEach(tab=>{
+    document.getElementById('tab-'+tab).classList.toggle('active', tab===t);
+    document.getElementById('nav-'+tab).classList.toggle('active', tab===t);
+  });
+}
+
+loadData();
+setInterval(()=>loadData(), 30000);
+</script>
+</body>
+</html>

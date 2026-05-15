@@ -35,20 +35,22 @@ public class MarketAnalyzerMod implements ClientModInitializer {
         org.example.marketanalyzer.logic.MarketAutomator.init();
 
         // ── Bind: Otwórz menu ──
-        openMenuKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+        openMenuKey = org.example.marketanalyzer.util.KeyBindingUtil12111.create(
             "key.marketanalyzer.open_menu",
-            InputUtil.Type.KEYSYM,
             GLFW.GLFW_KEY_UNKNOWN,          // bez przypisania domyślnego — gracz ustawia sam
             "key.categories.marketanalyzer"
-        ));
+        );
+        KeyBindingHelper.registerKeyBinding(openMenuKey);
+
 
         // ── Bind: Auto-Sell (trzymany przedmiot) ──
-        autoSellKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+        autoSellKey = org.example.marketanalyzer.util.KeyBindingUtil12111.create(
             "key.marketanalyzer.autosell",
-            InputUtil.Type.KEYSYM,
             GLFW.GLFW_KEY_UNKNOWN,
             "key.categories.marketanalyzer"
-        ));
+        );
+        KeyBindingHelper.registerKeyBinding(autoSellKey);
+
         // UWAGA: ręczny bind do skanu usunięto — używaj auto-skanu lub przycisku ▶ w GUI.
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {

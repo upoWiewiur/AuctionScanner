@@ -2,6 +2,8 @@ package org.example.marketanalyzer.mixin;
 
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.client.gui.screen.ingame.HandledScreen;
+import net.minecraft.network.packet.c2s.play.CloseHandledScreenC2SPacket;
 import org.example.marketanalyzer.logic.MarketScanner;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -13,10 +15,17 @@ public abstract class MinecraftClientMixin {
 
     @Inject(method = "setScreen", at = @At("HEAD"), cancellable = true)
     private void onSetScreen(Screen screen, CallbackInfo ci) {
-        if (MarketScanner.scanInProgress && MarketScanner.isAutoScan && screen != null) {
-            // When an AH screen is set during auto-scan, we allow the setScreen logic to proceed 
-            // so the network handler registers the container, but we might want to skip some parts.
-            // However, the main goal is to keep the mouse locked.
+        // Intercept BOTH manual and auto scans — prevent GUI from ever rendering
+        if (MarketScanner.scanInProgress && screen instanceof HandledScreen<?> hs) {
+            MarketScanner.captureScreen(hs);
+            // Tell the server we closed the container immediately,
+            // so the player is NEVER locked in place on the server side
+            MinecraftClient mc = (MinecraftClient)(Object)this;
+            if (mc.player != null && mc.player.currentScreenHandler != null) {
+                mc.player.networkHandler.sendPacket(
+                    new CloseHandledScreenC2SPacket(mc.player.currentScreenHandler.syncId));
+            }
+            ci.cancel(); // Don't render any GUI - true silent scan
         }
     }
 }
