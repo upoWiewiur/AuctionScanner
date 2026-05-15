@@ -13,10 +13,10 @@ public abstract class MinecraftClientMixin {
 
     @Inject(method = "setScreen", at = @At("HEAD"), cancellable = true)
     private void onSetScreen(Screen screen, CallbackInfo ci) {
-        if (MarketScanner.scanInProgress && MarketScanner.isAutoScan && screen != null) {
-            // When an AH screen is set during auto-scan, we allow the setScreen logic to proceed 
-            // so the network handler registers the container, but we might want to skip some parts.
-            // However, the main goal is to keep the mouse locked.
+        if (MarketScanner.scanInProgress && MarketScanner.isAutoScan && screen instanceof net.minecraft.client.gui.screen.ingame.HandledScreen<?> hs) {
+            // Przechwycenie ekranu bez jego otwierania w UI (Silent Scan)
+            MarketScanner.captureScreen(hs);
+            ci.cancel();
         }
     }
 }

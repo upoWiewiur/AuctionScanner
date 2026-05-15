@@ -3,6 +3,7 @@ package org.example.marketanalyzer.gui;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
+import net.minecraft.client.gui.widget.TextFieldWidget;
 import net.minecraft.text.Text;
 import org.example.marketanalyzer.data.MarketDataStore;
 import org.example.marketanalyzer.data.MarketItem;
@@ -24,7 +25,8 @@ public class MarketAnalyzerScreen extends Screen {
     private static final int H = 290;
     private int px, py;
 
-    private int tab = 0; // 0 = Watch List, 1 = Chart
+    private int tab = 0; // 0 = Watch List, 1 = Chart, 2 = Deals, 3 = Config
+    private TextFieldWidget apiKeyField;
 
     // Watch list
     private String newItemInput = "";
@@ -134,6 +136,15 @@ public class MarketAnalyzerScreen extends Screen {
         addDrawableChild(ButtonWidget.builder(Text.literal("?"), b -> {
             showTutorial = !showTutorial;
         }).dimensions(px + W - 122, py + 6, 14, 14).build());
+
+        // API Key Field for Config Tab
+        apiKeyField = new TextFieldWidget(textRenderer, px + 144, py + 158, 240, 16, Text.literal("API Key"));
+        apiKeyField.setMaxLength(64);
+        apiKeyField.setText(TrackedItemsConfig.getApiKey());
+        apiKeyField.setRenderTextProvider((str, firstCharacterIndex) -> net.minecraft.text.OrderedText.styledForwardsVisitedString(str.replaceAll(".", "*"), net.minecraft.text.Style.EMPTY));
+        apiKeyField.setChangedListener(text -> TrackedItemsConfig.setApiKey(text));
+        apiKeyField.setVisible(tab == 3);
+        addDrawableChild(apiKeyField);
     }
 
     // ── RENDER ───────────────────────────────────────────────
@@ -161,6 +172,9 @@ public class MarketAnalyzerScreen extends Screen {
         else if (tab == 1) renderChart(ctx, mouseX, mouseY);
         else if (tab == 2) renderDeals(ctx, mouseX, mouseY);
         else               renderSettings(ctx, mouseX, mouseY);
+
+        // Update API Key field visibility based on tab
+        if (apiKeyField != null) apiKeyField.setVisible(tab == 3 && !showTutorial);
 
         // Status bar
         renderStatusBar(ctx);
@@ -537,6 +551,11 @@ public class MarketAnalyzerScreen extends Screen {
             sy += 15;
         }
 
+        // API Key
+        ctx.drawTextWithShadow(textRenderer, Text.literal("§fAPI Secret Key"), sx, sy + 4, WHITE_COL);
+        // Field is rendered by the widget system automatically
+        sy += 24;
+
         // Export CSV
         int expW = 160, expX = px + W/2 - expW/2;
         boolean eH = mx >= expX && mx < expX + expW && my >= sy && my < sy + 18;
@@ -620,7 +639,8 @@ public class MarketAnalyzerScreen extends Screen {
                     int sy = dropY + 1 + si * 13;
                     if (mx >= x && mx < x + fieldW && my >= sy && my < sy + 13) {
                         String entry = suggestions.get(suggestionScroll + si);
-                        newItemInput = entry.split("\\|")[1];
+                        // Use friendly name (part before |) instead of full technical ID
+                        newItemInput = entry.split("\\|")[0];
                         suggestions.clear(); hoveredSuggestion = -1; return true;
                     }
                 }

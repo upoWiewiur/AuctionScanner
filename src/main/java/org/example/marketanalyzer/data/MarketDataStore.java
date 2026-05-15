@@ -11,8 +11,12 @@ import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.lang.reflect.Type;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class MarketDataStore {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
@@ -50,16 +54,18 @@ public class MarketDataStore {
     }
 
     private static void startPeriodicPull() {
-        new Thread(() -> {
+        Thread t = new Thread(() -> {
             while (true) {
                 try {
-                    Thread.sleep(15 * 60 * 1000L); // Co 15 minut
+                    Thread.sleep(10 * 60 * 1000L); // every 10 minutes
                     pullFromServerAsync();
                 } catch (InterruptedException e) {
                     break;
                 }
             }
-        }).start();
+        });
+        t.setDaemon(true); // won't prevent JVM shutdown
+        t.start();
     }
 
     public static void save() {
@@ -127,6 +133,7 @@ public class MarketDataStore {
                 java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
                         .uri(java.net.URI.create(getServerUrl()))
                         .header("Content-Type", "application/json")
+                        .header("X-API-Key", TrackedItemsConfig.getApiKey())
                         .POST(java.net.http.HttpRequest.BodyPublishers.ofString(json))
                         .build();
                 client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
@@ -137,44 +144,87 @@ public class MarketDataStore {
         }).start();
     }
 
+    /**
+     * DTO matching the server API response format:
+     * { "minecraft:carrot": { "itemName": "minecraft:carrot", "history": [{"timestamp":...,"price":...,"volume":...}] } }
+     */
+    private static class ServerItemDto {
+        String itemName;
+        List<PricePoint> history = new ArrayList<>();
+    }
+
     public static void pullFromServerAsync() {
-        new Thread(() -> {
+        Thread t = new Thread(() -> {
             try {
                 java.net.http.HttpClient client = java.net.http.HttpClient.newHttpClient();
                 java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
                         .uri(java.net.URI.create(getServerUrl()))
+                        .header("X-API-Key", TrackedItemsConfig.getApiKey())
                         .GET()
                         .build();
-                java.net.http.HttpResponse<String> response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
+                java.net.http.HttpResponse<String> response = client.send(
+                    request, java.net.http.HttpResponse.BodyHandlers.ofString());
+
                 if (response.statusCode() == 200) {
-                    Type type = new TypeToken<Map<String, MarketItem>>() {}.getType();
-                    Map<String, MarketItem> globalData = GSON.fromJson(response.body(), type);
-                    if (globalData != null) {
-                        for (Map.Entry<String, MarketItem> entry : globalData.entrySet()) {
-                            MarketItem localItem = marketData.computeIfAbsent(entry.getKey(), MarketItem::new);
-                            // Merge histories safely (avoiding duplicates)
-                            for (PricePoint pt : entry.getValue().getHistory()) {
-                                boolean exists = localItem.getHistory().stream()
-                                    .anyMatch(p -> p.getTimestamp() == pt.getTimestamp() && p.getPrice() == pt.getPrice());
-                                if (!exists) {
+                    Type type = new TypeToken<Map<String, ServerItemDto>>() {}.getType();
+                    Map<String, ServerItemDto> globalData = GSON.fromJson(response.body(), type);
+
+                    if (globalData == null || globalData.isEmpty()) return;
+
+                    int added = 0;
+                    synchronized (marketData) {
+                        for (Map.Entry<String, ServerItemDto> entry : globalData.entrySet()) {
+                            String itemKey = entry.getKey();
+                            ServerItemDto dto = entry.getValue();
+                            if (dto == null || dto.history == null) continue;
+
+                            MarketItem localItem = marketData.computeIfAbsent(
+                                itemKey, MarketItem::new);
+
+                            // Build dedup set from existing history (O(1) lookup)
+                            Set<Long> existingKeys = new HashSet<>();
+                            for (PricePoint p : localItem.getHistory()) {
+                                // Key = timestamp (unique enough for our use-case)
+                                existingKeys.add(p.getTimestamp());
+                            }
+
+                            for (PricePoint pt : dto.history) {
+                                if (pt == null) continue;
+                                if (!existingKeys.contains(pt.getTimestamp())) {
                                     localItem.getHistory().add(pt);
+                                    existingKeys.add(pt.getTimestamp());
+                                    added++;
                                 }
                             }
-                            // Re-sort
-                            localItem.getHistory().sort(java.util.Comparator.comparingLong(PricePoint::getTimestamp));
+                            // Keep history sorted
+                            localItem.getHistory().sort(
+                                java.util.Comparator.comparingLong(PricePoint::getTimestamp));
                         }
-                        
-                        // Zapisz połączone dane (bez wywoływania pushToServerAsync, by uniknąć zapętlenia)
-                        if (!CONFIG_DIR.exists()) CONFIG_DIR.mkdirs();
-                        try (FileWriter writer = new FileWriter(DATA_FILE)) {
-                            GSON.toJson(marketData, writer);
-                        }
-                        MarketAnalyzerMod.LOGGER.info("[MarketAnalyzer] Pomyślnie pobrano i scalono globalną historię z serwera.");
                     }
+
+                    // Copy for safe serialization outside synchronized block
+                    Map<String, MarketItem> copyToSave;
+                    synchronized (marketData) {
+                        copyToSave = new HashMap<>(marketData);
+                    }
+
+                    // Persist merged data (skip pushToServerAsync to avoid loop)
+                    if (!CONFIG_DIR.exists()) CONFIG_DIR.mkdirs();
+                    try (FileWriter writer = new FileWriter(DATA_FILE)) {
+                        GSON.toJson(copyToSave, writer);
+                    }
+                    MarketAnalyzerMod.LOGGER.info(
+                        "[MarketAnalyzer] Pobrano globalną historię. Nowych punktów: " + added);
+                } else {
+                    MarketAnalyzerMod.LOGGER.warn(
+                        "[MarketAnalyzer] Serwer odpowiedział: " + response.statusCode());
                 }
             } catch (Exception e) {
-                MarketAnalyzerMod.LOGGER.warn("[MarketAnalyzer] Nie udało się pobrać globalnej historii cen (Serwer niedostępny).");
+                MarketAnalyzerMod.LOGGER.warn(
+                    "[MarketAnalyzer] Nie udało się pobrać globalnej historii: " + e.getMessage());
             }
-        }).start();
+        });
+        t.setDaemon(true);
+        t.start();
     }
 }

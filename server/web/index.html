@@ -2,8 +2,12 @@
 <html lang="en" class="dark">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Market Analyzer | Premium Dashboard</title>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#05080F">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -80,7 +84,8 @@
             </div>
         </div>
 
-        <div class="flex items-center gap-6">
+        <!-- Desktop Navigation Actions -->
+        <div class="hidden md:flex items-center gap-6">
             <div class="hidden md:flex items-center gap-4 text-xs font-bold uppercase tracking-widest text-gray-500">
                 <div class="flex flex-col items-end">
                     <span>Total Records</span>
@@ -106,10 +111,10 @@
     </nav>
 
     <!-- Main Container -->
-    <main class="flex-1 flex overflow-hidden px-4 pb-4 gap-4">
+    <main class="flex-1 flex flex-col md:flex-row overflow-hidden px-4 pb-20 md:pb-4 gap-4">
         
-        <!-- Sidebar -->
-        <aside class="w-80 flex flex-col gap-4">
+        <!-- Sidebar (Hidden on mobile, items shown in main view instead) -->
+        <aside class="hidden md:flex w-80 flex-col gap-4">
             <div class="glass-panel p-5 flex flex-col h-full">
                 <div class="flex justify-between items-center mb-4">
                     <h2 class="text-sm font-bold text-gray-400 uppercase tracking-widest">Inventory</h2>
@@ -133,8 +138,21 @@
             
             <!-- Market Tab -->
             <div id="content-market" class="flex flex-col gap-4 h-full">
+                <!-- Mobile Search & Watchlist (Only visible on mobile) -->
+                <div class="md:hidden glass-panel p-4 flex flex-col gap-3">
+                    <div class="flex justify-between items-center">
+                        <h2 class="text-sm font-bold text-gray-400 uppercase tracking-widest">Mobile Assets</h2>
+                        <button onclick="toggleWatchlistMode()" id="watchlist-toggle-mobile" class="text-[10px] font-bold px-2 py-1 rounded bg-white/5 text-gray-500 hover:text-white transition-all">ALL</button>
+                    </div>
+                    <input type="text" id="search-input-mobile" placeholder="Search..." autocomplete="off" oninput="document.getElementById('search-input').value = this.value; renderItemList();"
+                           class="w-full bg-dark/40 border border-white/5 rounded-xl px-4 py-2 text-sm text-white focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20">
+                    <div id="mobile-item-list" class="flex overflow-x-auto gap-2 pb-2 hide-scrollbar">
+                        <!-- Horizontal chips for selected items -->
+                    </div>
+                </div>
+
                 <!-- Stats Row -->
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div class="glass-panel p-5 stat-card">
                         <p class="text-xs font-bold text-gray-500 uppercase tracking-wider">Unit Price</p>
                         <div class="flex items-end gap-2 mt-2">
@@ -204,6 +222,21 @@
 
         </div>
     </main>
+
+    <!-- Mobile Bottom Navigation (PWA Style) -->
+    <div class="md:hidden fixed bottom-0 left-0 right-0 glass-panel border-t-0 rounded-t-2xl rounded-b-none z-50 flex justify-around items-center p-3 px-6">
+        <button onclick="setTab('market')" id="nav-market" class="flex flex-col items-center text-accent">
+            <svg class="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"></path></svg>
+            <span class="text-[10px] font-bold uppercase tracking-wider">Charts</span>
+        </button>
+        <button onclick="fetchData()" class="flex flex-col items-center text-white bg-accent/20 p-3 rounded-full -mt-8 border border-accent/30 shadow-lg shadow-accent/20">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+        </button>
+        <button onclick="setTab('snipes')" id="nav-snipes" class="flex flex-col items-center text-gray-500">
+            <svg class="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+            <span class="text-[10px] font-bold uppercase tracking-wider">Snipes</span>
+        </button>
+    </div>
 
     <!-- Help Modal -->
     <div id="help-modal" class="fixed inset-0 bg-dark/80 backdrop-blur-md z-[100] hidden flex items-center justify-center p-4">
@@ -418,6 +451,23 @@
             });
             list.innerHTML = html || '<p class="text-gray-500 text-center py-4 text-xs">' + (watchlistMode ? 'No watched items. Star some items first!' : 'No assets found') + '</p>';
             document.getElementById('item-count').innerText = count;
+
+            // Update mobile horizontal list
+            const mobileList = document.getElementById('mobile-item-list');
+            if (mobileList) {
+                let mobileHtml = '';
+                items.forEach(item => {
+                    const isWatched = item.allIds.some(id => myWatchlist.includes(id));
+                    const isJunk = !item.id.includes(':') || /^\d/.test(item.friendly);
+                    if (isJunk && !isWatched) return;
+                    if (watchlistMode && !isWatched) return;
+                    if (item.friendly.toLowerCase().includes(search) || item.id.toLowerCase().includes(search)) {
+                        const isActive = item.allIds.includes(selectedItem);
+                        mobileHtml += `<button onclick="selectItem('${item.id}')" class="whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-bold ${isActive ? 'bg-accent text-white' : 'bg-dark/50 text-gray-400 border border-white/5'} transition-colors">${item.friendly}</button>`;
+                    }
+                });
+                mobileList.innerHTML = mobileHtml;
+            }
         }
 
         function renderSnipes() {
@@ -555,6 +605,12 @@
             
             document.getElementById('tab-market').className = tab === 'market' ? 'px-4 py-2 rounded-lg text-sm font-medium transition-all bg-accent text-white shadow-lg shadow-blue-500/20' : 'px-4 py-2 rounded-lg text-sm font-medium transition-all text-gray-400 hover:text-white';
             document.getElementById('tab-snipes').className = tab === 'snipes' ? 'px-4 py-2 rounded-lg text-sm font-medium transition-all bg-accent text-white shadow-lg shadow-blue-500/20' : 'px-4 py-2 rounded-lg text-sm font-medium transition-all text-gray-400 hover:text-white';
+            
+            // Mobile bottom nav styling
+            const mNav = document.getElementById('nav-market');
+            const sNav = document.getElementById('nav-snipes');
+            if (mNav) mNav.className = tab === 'market' ? 'flex flex-col items-center text-accent' : 'flex flex-col items-center text-gray-500';
+            if (sNav) sNav.className = tab === 'snipes' ? 'flex flex-col items-center text-accent' : 'flex flex-col items-center text-gray-500';
         }
 
         function toggleWatch(name, e) {
@@ -584,6 +640,17 @@
         document.getElementById('search-input').addEventListener('input', renderItemList);
         setInterval(fetchData, 15000); // More frequent updates for premium feel
         fetchData();
+
+        // Register Service Worker for PWA
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js').then((registration) => {
+                    console.log('ServiceWorker registration successful with scope: ', registration.scope);
+                }, (error) => {
+                    console.log('ServiceWorker registration failed: ', error);
+                });
+            });
+        }
     </script>
 </body>
 </html>
