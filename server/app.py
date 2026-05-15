@@ -281,6 +281,7 @@ def get_flip(item_name: str, conn: sqlite3.Connection = Depends(get_db)):
 
 # Static Fallbacks
 app.mount("/web", StaticFiles(directory=WEB_DIR), name="web")
+app.mount("/icons", StaticFiles(directory=os.path.join(WEB_DIR, "icons")), name="icons")
 
 @app.get("/")
 @app.get("/index.html")
