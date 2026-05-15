@@ -35,6 +35,20 @@ public class MarketAnalyzerScreen extends Screen {
 
     // Chart
     private String selectedItem = null;
+    private boolean pullTriggered = false; // avoid spamming server pulls
+
+    /** Called when chart tab is visible — fetches server data if local history is missing */
+    private void ensureChartDataLoaded() {
+        if (pullTriggered) return;
+        if (selectedItem == null) return;
+        org.example.marketanalyzer.data.MarketItem localItem =
+            org.example.marketanalyzer.data.MarketDataStore.getItem(selectedItem);
+        if (localItem == null || localItem.getHistory().isEmpty()) {
+            pullTriggered = true;
+            // Fetch from server in background
+            org.example.marketanalyzer.data.MarketDataStore.pullFromServerAsync();
+        }
+    }
 
     // ── Autocomplete state ────────────────────────────────────
     private static final int MAX_SUGGESTIONS = 8;
@@ -169,7 +183,7 @@ public class MarketAnalyzerScreen extends Screen {
 
         // Content area
         if (tab == 0)      renderWatchList(ctx, mouseX, mouseY);
-        else if (tab == 1) renderChart(ctx, mouseX, mouseY);
+        else if (tab == 1) { renderChart(ctx, mouseX, mouseY); ensureChartDataLoaded(); }
         else if (tab == 2) renderDeals(ctx, mouseX, mouseY);
         else               renderSettings(ctx, mouseX, mouseY);
 

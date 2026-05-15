@@ -72,18 +72,14 @@ public class MarketScanner {
                 }
 
                 case SCANNING -> {
-                    // Scan and close screen in the SAME tick — minimises GUI block to ~0 visible ticks
                     if (capturedScreen != null) {
                         doScan(client, capturedScreen);
-                        // Send packet to close the server-side container to avoid getting stuck in the inventory
-                        if (client.player != null && client.player.currentScreenHandler != null) {
-                            client.player.networkHandler.sendPacket(new net.minecraft.network.packet.c2s.play.CloseHandledScreenC2SPacket(client.player.currentScreenHandler.syncId));
-                        }
+                        // CloseHandledScreenC2SPacket is sent in MinecraftClientMixin — no need to duplicate
                     } else {
                         MarketAnalyzerMod.LOGGER.warn("[Market] Screen was closed before scan for '" + currentItem + "'");
                     }
-                    // Close immediately if it was rendered
-                    if (client.currentScreen == capturedScreen) {
+                    // Safety: close client-side screen if somehow still open
+                    if (client.currentScreen != null && client.currentScreen == capturedScreen) {
                         client.setScreen(null);
                     }
                     capturedScreen = null;
@@ -165,16 +161,15 @@ public class MarketScanner {
         if (queue.isEmpty()) {
             state = State.IDLE;
             scanInProgress = false;
-            // Save flag before reset so completion message check works correctly
             boolean wasAutoScan = isAutoScan;
             isAutoScan = false;
-            MarketDataStore.save();
-            PricesJsonExporter.export(); // Update prices.json for AutoBuy mod
+            MarketDataStore.save();           // save locally
+            MarketDataStore.pushToServerAsync(); // ALWAYS push: manual or auto
+            PricesJsonExporter.export();
             AutoScanScheduler.onScanComplete();
-            // Show message only for manual scans
             if (!wasAutoScan && client.player != null) {
                 client.player.sendMessage(
-                    Text.literal("§a[Market] §fSkanowanie zakończone! Sprawdź wykresy (§eM§f)."), false);
+                    Text.literal("§a[Market] §fSkan zakończony! Dane wysłane na serwer 🌐"), false);
             }
             return;
         }
