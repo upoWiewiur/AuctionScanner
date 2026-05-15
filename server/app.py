@@ -132,8 +132,10 @@ def post_market_data(payload: MarketDataPayload, conn: sqlite3.Connection = Depe
 
 @app.get("/api/snipes")
 def get_snipes(conn: sqlite3.Connection = Depends(get_db)):
+    # Only return snipes from the last 10 minutes
+    cutoff = int((datetime.now().timestamp() - 600) * 1000)
     c = conn.cursor()
-    c.execute('SELECT item_name, timestamp, price, avg_price FROM snipes ORDER BY timestamp DESC LIMIT 50')
+    c.execute('SELECT item_name, timestamp, price, avg_price FROM snipes WHERE timestamp > ? ORDER BY timestamp DESC LIMIT 50', (cutoff,))
     rows = c.fetchall()
     return [{"item_name": r[0], "timestamp": r[1], "price": r[2], "avg_price": r[3]} for r in rows]
 

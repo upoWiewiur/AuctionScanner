@@ -158,7 +158,7 @@ function selectItem(id){
   SEL=id;
   document.querySelectorAll('.ir').forEach(r=>r.classList.toggle('active',r.querySelector('.id')?.textContent===id));
   const v=D[id];if(!v||!v.history||!v.history.length)return;
-  const h=v.history.slice(-48),p=h.map(x=>x.price);
+  const h=v.history.slice(-72),p=h.map(x=>x.price);
   const avg=p.reduce((a,b)=>a+b)/p.length,last=p[p.length-1],chg=p.length>1?(last-p[0])/p[0]*100:0;
   const ratio=last/avg,rec=ratio<=.9?'BUY 🟢':ratio>=1.05?'SELL 🔴':'HOLD 🟡';
   document.getElementById('sp').textContent=f(last);
@@ -168,25 +168,70 @@ function selectItem(id){
   document.getElementById('sas').textContent=`${p.length} próbek`;
   document.getElementById('ss2').textContent=f(last*64);
   document.getElementById('sr2').textContent=rec;
-  const ctx=document.getElementById('chart').getContext('2d');
+  const canvas=document.getElementById('chart');
+  const ctx=canvas.getContext('2d');
   if(CH)CH.destroy();
   const lc=last<avg*.95?'#22c55e':last>avg*1.05?'#ef4444':'#3a78ff';
   const g=ctx.createLinearGradient(0,0,0,180);g.addColorStop(0,lc+'44');g.addColorStop(1,'transparent');
-  CH=new Chart(ctx,{type:'line',data:{labels:h.map(x=>fd(x.timestamp)),datasets:[{data:p,borderColor:lc,backgroundColor:g,borderWidth:2,pointRadius:0,tension:.4,fill:true}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
-      scales:{x:{ticks:{color:'#475569',font:{size:9},maxTicksLimit:6},grid:{color:'rgba(255,255,255,0.04)'}},
-              y:{ticks:{color:'#475569',font:{size:9},callback:v=>f(v)},grid:{color:'rgba(255,255,255,0.04)'}}}}});
+  const fd2=ts=>{const d=new Date(ts);return d.getDate()+'.'+(d.getMonth()+1)+' '+d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0');};
+  CH=new Chart(ctx,{
+    type:'line',
+    data:{
+      labels:h.map(x=>fd(x.timestamp)),
+      datasets:[
+        {data:p,borderColor:lc,backgroundColor:g,borderWidth:2.5,pointRadius:3,pointHoverRadius:7,pointBackgroundColor:lc,pointHoverBackgroundColor:'#fff',pointHoverBorderColor:lc,pointHoverBorderWidth:2,tension:.35,fill:true},
+        {data:Array(p.length).fill(avg),borderColor:'#f59e0b88',borderWidth:1,borderDash:[5,5],pointRadius:0,fill:false,label:'avg'}
+      ]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      interaction:{mode:'index',intersect:false},
+      plugins:{
+        legend:{display:false},
+        tooltip:{
+          backgroundColor:'rgba(5,13,26,0.96)',
+          titleColor:'#94a3b8',bodyColor:'#f8fafc',
+          borderColor:'rgba(58,120,255,0.4)',borderWidth:1,
+          padding:10,displayColors:true,
+          callbacks:{
+            title:(items)=>fd2(h[items[0].dataIndex].timestamp),
+            label:(item)=>item.datasetIndex===0?` Cena: ${f(item.raw)}`:`  Śred. 7d: ${f(item.raw)}`
+          }
+        }
+      },
+      scales:{
+        x:{ticks:{color:'#475569',font:{size:9},maxTicksLimit:7},grid:{color:'rgba(255,255,255,0.04)'}},
+        y:{ticks:{color:'#475569',font:{size:9},callback:v=>f(v)},grid:{color:'rgba(255,255,255,0.04)'}}
+      }
+    }
+  });
 }
 
 function renderSnipes(){
   const el=document.getElementById('sl2');
-  if(!SN.length){el.innerHTML='<div class="empty">Brak snipe\'ów</div>';return;}
-  el.innerHTML=SN.slice(0,20).map(s=>{
+  const now=Date.now();
+  if(!SN.length){el.innerHTML='<div class="empty">Brak aktywnych okazji<br><span style="font-size:10px;color:#334155">Snipe\'y znikają po 10 min</span></div>';return;}
+  el.innerHTML=SN.map(s=>{
     const d=((s.avg_price-s.price)/s.avg_price*100).toFixed(1);
-    return`<div class="sr"><div class="sh"><span class="si">${fn(s.item_name)}</span><span class="sd">-${d}%</span></div>
-      <div class="sp"><div><div class="spl">Cena</div><div class="spv green">${f(s.price)}</div></div>
-      <div><div class="spl">Śred.</div><div class="spv gray">${f(s.avg_price)}</div></div>
-      <div><div class="spl">Oszczędność</div><div class="spv green">${f(s.avg_price-s.price)}</div></div></div></div>`;
+    const age=Math.round((now-s.timestamp)/1000);
+    const ageTxt=age<60?`${age}s temu`:`${Math.round(age/60)}m temu`;
+    const pct=Math.max(0,100-age/6);
+    return`<div class="sr">
+      <div class="sh"><span class="si">${fn(s.item_name)}</span>
+        <div style="display:flex;align-items:center;gap:6px">
+          <span style="font-size:9px;color:#475569">${ageTxt}</span>
+          <span class="sd">-${d}%</span>
+        </div>
+      </div>
+      <div style="height:3px;background:rgba(255,255,255,0.06);border-radius:2px;margin:6px 0 4px">
+        <div style="height:3px;width:${pct}%;background:${pct>50?'#22c55e':'#f59e0b'};border-radius:2px;transition:width 1s"></div>
+      </div>
+      <div class="sp">
+        <div><div class="spl">Cena</div><div class="spv green">${f(s.price)}</div></div>
+        <div><div class="spl">Śred.</div><div class="spv gray">${f(s.avg_price)}</div></div>
+        <div><div class="spl">Oszczędność</div><div class="spv green">${f(s.avg_price-s.price)}</div></div>
+      </div>
+    </div>`;
   }).join('');
 }
 
@@ -197,13 +242,13 @@ function setTab(t){
   });
 }
 
-// Service Worker dla PWA
 if('serviceWorker' in navigator){
   navigator.serviceWorker.register('sw.js').catch(()=>{});
 }
 
 load();
-setInterval(load,30000);
+setInterval(load,20000);
+setInterval(()=>{if(SN.length)renderSnipes();},1000);
 </script>
 </body>
 </html>
